@@ -49,6 +49,7 @@ class Structure(Geometry_tools):
         
         L = self.distogram.shape[1]
         
+        torch.manual_seed(random_state)
         self.torsion = (np.pi * (torch.rand(2* (L - 1)) - 0.5)).requires_grad_() 
         # if torsion is None:
         #     # Load Predictions

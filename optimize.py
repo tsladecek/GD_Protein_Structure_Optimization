@@ -94,7 +94,7 @@ def gd_psr(structure,
         normal             : bool, whether (scaled) normal distribution should be fitted to the distograms\n
         iterations         : int, iterations of the gradient descent algorithm\n
         iteration_start    : int, iteration start integer
-        distance_threshold : only distances (real) less than "distance_threshold" are used for optimization
+        distance_threshold : only distances (distogram) less than "distance_threshold" are used for optimization
         lr                 : float, learning rate\n
         gradient_scaling   : str, type of gradient scaling. Either 'sddiv' (division by standard deviation), 'normal' for standard normalization or "absmaxdiv" for division by the absolute maximum value
         momentum           : float, momentum parameter\n
@@ -197,7 +197,7 @@ def optimize(domain,
         normal             : bool, whether (scaled) normal distribution should be fitted to the distograms\n
         output_dir         : output directory\n
         iterations         : int, iterations of the gradient descent algorithm\n
-        distance_threshold : only distances (real) less than "distance_threshold" are used for optimization
+        distance_threshold : only distances (distogram) less than "distance_threshold" are used for optimization
         restarts           : int, number of times the learning rate is altered after "iterations" pass
         lr                 : float, learning rate\n
         gradient_scaling   : str, type of gradient scaling. Either 'sddiv' (division by standard deviation), 'normal' for standard normalization or "absmaxdiv" for division by the absolute maximum value
