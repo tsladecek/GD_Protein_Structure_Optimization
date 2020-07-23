@@ -31,7 +31,6 @@ def steric_repulsion(dmap):
 
 def NLLLoss(structure, 
             normal=True, 
-            distance_threshold=18, 
             steric=False):
     """
     Loss Function consisting of two potentials:
@@ -57,7 +56,7 @@ def NLLLoss(structure,
                                structure.normal_params[1, i, j],\
                                structure.normal_params[2, i, j]
                 
-                if mu <= distance_threshold:
+                if mu <= structure.distance_threshold:
                     loss += torch.log(max(torch.tensor(0.0001), 
                                       normal_distr(distance_map[i, j], mu, sigma, s)))
      
@@ -68,6 +67,8 @@ def NLLLoss(structure,
                                       interp(x,
                                              structure.distogram[:, i, j],
                                              min(torch.tensor(22), distance_map[i, j]))))
+                
+    # Steric clashes term
     if steric or steric == 'True' or steric == 'T':
         loss -= steric_repulsion(distance_map) 
     
@@ -78,7 +79,6 @@ def gd_psr(structure,
            normal=True,
            iterations=100,
            iteration_start=0,
-           distance_threshold=18,
            lr=1e-3,
            gradient_scaling='sddiv',  # one of ['sddiv', 'normal', 'absmaxdiv']
            momentum=0,
@@ -94,7 +94,6 @@ def gd_psr(structure,
         normal             : bool, whether (scaled) normal distribution should be fitted to the distograms\n
         iterations         : int, iterations of the gradient descent algorithm\n
         iteration_start    : int, iteration start integer
-        distance_threshold : only distances (distogram) less than "distance_threshold" are used for optimization
         lr                 : float, learning rate\n
         gradient_scaling   : str, type of gradient scaling. Either 'sddiv' (division by standard deviation), 'normal' for standard normalization or "absmaxdiv" for division by the absolute maximum value
         momentum           : float, momentum parameter\n
@@ -131,7 +130,7 @@ def gd_psr(structure,
         if nesterov is True or nesterov == 'True' or nesterov == 'T':
             structure.torsion = (structure.torsion + momentum * V).detach().requires_grad_()
             
-        L = NLLLoss(structure, normal, distance_threshold, steric=steric)
+        L = NLLLoss(structure, normal, steric=steric)
         
         loss_minus_th_loss = L.item() - structure.min_theoretical_loss
         
@@ -222,12 +221,12 @@ def optimize(domain,
                           distogram_path=distogram_path, 
                           seq_path=seq_path, 
                           random_state=random_state, 
-                          normal=normal)
+                          normal=normal,
+                          distance_threshold=distance_threshold)
     
     for r in range(restarts):
         s, l, h = gd_psr(structure=structure, 
                          normal=normal,
-                         distance_threshold=distance_threshold,
                          iterations=iterations, 
                          iteration_start=r*iterations,
                          lr=lr,

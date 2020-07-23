@@ -13,10 +13,7 @@ from copy import copy
 from Bio.PDB.Polypeptide import one_to_three
 from datetime import date
 from mpl_toolkits.mplot3d import Axes3D
-import pickle
 from distributions import *
-import time
-from scipy.stats import vonmises
 
 # # Angles
 CNCA = torch.tensor(np.radians(122))
@@ -38,61 +35,43 @@ class Structure(Geometry_tools):
                  distogram_path,
                  seq_path,
                  random_state=1618, 
-                 normal=True
+                 normal=True,
+                 distance_threshold=18
                  ):
+        """
+        Structure Class
+        
+        Input:
+            domain             : str, name of the domain\n
+            distogram_path     : str, path to distogram (torch pt file)\n
+            seq_path           : str, path to fasta sequence\n
+            random_state       : int\n
+            normal             : bool, whether (scaled) normal distribution should be fitted to the distograms\n
+            distance_threshold : only distances (distogram) less than "distance_threshold" are used for optimization\n
+            
+        Methods:
+            G                   : returns distance map induced from the given set of torsion angles
+            G_full              : similar to G, but returns full 3D coordinates
+            copy                : returns copy of Structure object
+            visualize_structure : visualizes atoms with bonds in 3D space
+            pdb_atom            : returns string of atom annotation following the pdb format
+            pdb_coords          : returns the structure coordinates in pdb format
+        """
         
         self.distogram = torch.load(distogram_path)
         
         self.domain = domain
         self.random_state = random_state
         
+        self.distance_threshold = distance_threshold
         
         L = self.distogram.shape[1]
         
         torch.manual_seed(random_state)
         self.torsion = (np.pi * (torch.rand(2* (L - 1)) - 0.5)).requires_grad_() 
-        # if torsion is None:
-        #     # Load Predictions
-        #     if isdict:
-        #         with open(domain_path, 'rb') as f:
-        #             d = pickle.load(f)
-
-        #         distogram, phi, psi = d['distogram'][1:, :, :], d['phi'], d['psi']
-        #         self.distogram = 0.5 * (distogram + distogram.permute((0, 2, 1)))
-        #     else:
-        #         d = torch.load(domain_path)
-        #         L = d[0].shape[2]
-        #         distogram, phi, psi = d[0][0, 1:, :, :], d[2].view(1, 37, 1, L), d[3].view(1, 37, 1, L)
-        #         self.distogram = 0.5 * (distogram + distogram.permute((0, 2, 1)))
-        #     # remove first phi angle and last psi angle
-        #     # necessary because the first atom we place is Nitrogen and last is Carbon-C
-        #     phi = phi[:, :, :, 1:]
-        #     psi = psi[:, :, :, :-1]
-
-        #     # sample angles from von Mises distribution fitted to each histogram in angleograms
-        #     phi_sample, psi_sample = sample_torsion(phi, psi, kappa_scalar=kappa_scalar, random_state=random_state)
-
-        #     # fit continuous von Mises distribution to each histogram in angleograms
-        #     if angle_potential or angle_potential == 'True':
-        #         self.vmphi = fit_vm(phi, kappa_scalar)
-        #         self.vmpsi = fit_vm(psi, kappa_scalar)
-                
-        #         # calculate minimal angle loss
-        #         mal = 0
-        #         for i in self.vmphi:
-        #             mal += np.log(vonmises.pdf(x = i.loc, loc=i.loc, kappa=i.concentration))
-        #         for i in self.vmpsi:
-        #             mal += np.log(vonmises.pdf(x = i.loc, loc=i.loc, kappa=i.concentration))
-            
-        #         self.min_angle_loss = mal
-        #     else:
-        #         self.vmphi = None
-        #         self.vmpsi = None
-                
-        #         self.min_angle_loss = 0
-        #     self.torsion = torch.cat((phi_sample, psi_sample)).requires_grad_()
         
         self.normal = normal
+        
         if normal:
             self.normal_params = fit_normal(self.distogram)
             # Calculate min theoretical loss
@@ -100,13 +79,16 @@ class Structure(Geometry_tools):
             for i in range(L - 1):
                 for j in range(i + 1, L):
                     mu, sigma, s = self.normal_params[0, i, j], self.normal_params[1, i, j], self.normal_params[2, i, j]
-                    min_th_loss -= torch.log(normal_distr(mu, mu, sigma, s))
+                    
+                    if mu <= distance_threshold:
+                        min_th_loss -= torch.log(normal_distr(mu, mu, sigma, s))
         else:
             # Calculate min theoretical loss
             min_th_loss = 0
             for i in range(L - 1):
                 for j in range(i + 1, L):
-                    min_th_loss -= torch.log(torch.max(self.distogram[:, i, j]))
+                    if torch.max(self.distogram[:, i, j]) <= distance_threshold:
+                        min_th_loss -= torch.log(torch.max(self.distogram[:, i, j]))
 
         self.min_theoretical_loss = min_th_loss.item()
             
@@ -148,7 +130,7 @@ class Structure(Geometry_tools):
             
             # backbone atoms
             atoms = ['N', 'CA', 'C']
-            #angles = [self.psi[i-1], torch.tensor(np.pi), self.phi[i-1]]
+            
             angles = [psi[i-1], torch.tensor(np.pi), phi[i-1]]
             
             for j in range(3):
@@ -202,7 +184,7 @@ class Structure(Geometry_tools):
 
             for i in range(len(phi)):
                 atoms = ['N', 'CA', 'C']
-                #angles = [self.psi[i], torch.tensor(np.pi), self.phi[i]]
+                
                 angles = [psi[i], torch.tensor(np.pi), phi[i]]
                 
                 for j in range(3):

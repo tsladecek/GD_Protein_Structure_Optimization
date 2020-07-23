@@ -3,6 +3,7 @@
 
 import torch
 import numpy as np
+
 # Angles
 CNCA = torch.tensor(np.radians(122))
 NCAC = torch.tensor(np.radians(111))
@@ -17,8 +18,8 @@ NCA = 1.45
 CACB = 1.52
 
 class Geometry_tools:
-    def __init__(self):
-        return
+    #def __init__(self):
+    #    return
     
     def cross_product(self, k, v):
         # definition of cross product

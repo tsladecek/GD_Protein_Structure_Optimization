@@ -9,6 +9,45 @@ import numpy as np
 import pyro
 from scipy.stats import vonmises
 
+
+# Normal Distribution Fit to the Distograms
+
+def calc_moments(distribution, min_distance=2, max_distance=22):
+    """
+    Calculate mean and standard deviation of a distribution
+    """
+    bins = distribution.shape[0]
+    x = torch.linspace(min_distance, max_distance, bins)
+    d_mean = torch.sum(x * distribution)
+    d_var = torch.sum(distribution * (x - d_mean) ** 2) 
+    
+    return d_mean, torch.sqrt(d_var)
+
+
+def normal_distr(x, mu, sigma, s=1):
+    """
+    Find probability of a value "x" in a normal distribution with mean
+    "mu" and standard deviation "sigma"
+    """
+    
+    return s * 1/(sigma * torch.sqrt(torch.tensor(2 * np.pi))) * torch.exp((-1/2) * ((x - mu) / sigma) ** 2)
+
+def fit_normal(distogram):
+    """
+    This just calculates means and standard deviation of all histograms
+    and saves it into a 3D tensor with depth 2
+    """
+    L = distogram.shape[1]
+    params = torch.empty((3, L, L))
+    
+    for i in range(L):
+        for j in range(L):
+            m, s = calc_moments(distogram[:, i, j])
+            scalar = torch.max(distogram[:, i, j]) / normal_distr(m, m, s)
+            params[0, i, j], params[1, i, j], params[2, i, j] = m, s, scalar
+    
+    return params
+
 # cubic spline interpolation
 # https://stackoverflow.com/questions/61616810/how-to-do-cubic-spline-interpolation-and-integration-in-pytorch
 
@@ -60,7 +99,8 @@ def randvonmises(anglegram, i, kappa_scalar=8, random_state=1):
     """
     np.random.seed(random_state)
     
-    xtorsion = torch.linspace(-np.pi, np.pi, 36)
+    bins = anglegram.shape[0]
+    xtorsion = torch.linspace(-np.pi, np.pi, bins)
     
     vmexp = torch.sum(xtorsion * anglegram[0, 1:, 0, i])
     vmvar = torch.sum(anglegram[0, 1:, 0, i] * (xtorsion - vmexp) ** 2)
@@ -94,7 +134,8 @@ def fit_vm(anglegram, kappa_scalar=8):
     Each item has a method ".log_prob(x)"
     """
     distros = []
-    xtorsion = torch.linspace(-np.pi, np.pi, 36)
+    bins = anglegram.shape[0]
+    xtorsion = torch.linspace(-np.pi, np.pi, bins)
     
     for i in range(anglegram.shape[3]):
         vmexp = torch.sum(xtorsion * anglegram[0, 1:, 0, i])
@@ -106,37 +147,3 @@ def fit_vm(anglegram, kappa_scalar=8):
     return distros
 
 
-def calc_moments(distribution):
-    """
-    Calculate mean and standard deviation of a distribution
-    """
-    x = torch.linspace(2, 22, 31)
-    d_mean = torch.sum(x * distribution)
-    d_var = torch.sum(distribution * (x - d_mean) ** 2) 
-    
-    return d_mean, torch.sqrt(d_var)
-
-
-def normal_distr(x, mu, sigma, s=1):
-    """
-    Find probability of a value "x" in a normal distribution with mean
-    "mu" and standard deviation "sigma"
-    """
-    
-    return s * 1/(sigma * torch.sqrt(torch.tensor(2 * np.pi))) * torch.exp((-1/2) * ((x - mu) / sigma) ** 2)
-
-def fit_normal(distogram):
-    """
-    This just calculates means and standard deviation of all histograms
-    and saves it into a 3D tensor with depth 2
-    """
-    L = distogram.shape[1]
-    params = torch.empty((3, L, L))
-    
-    for i in range(L):
-        for j in range(L):
-            m, s = calc_moments(distogram[:, i, j])
-            scalar = torch.max(distogram[:, i, j]) / normal_distr(m, m, s)
-            params[0, i, j], params[1, i, j], params[2, i, j] = m, s, scalar
-    
-    return params
