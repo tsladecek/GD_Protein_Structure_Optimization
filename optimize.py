@@ -15,17 +15,29 @@ import os
 import matplotlib.pyplot as plt
 
 # %%
-C_vdW = 2 * 1.7
+Cb_vdW = 2 * 1.7
 
 def steric_repulsion(dmap):
-    """Steric repulsion term between C-beta atoms"""
+    """
+    Steric repulsion term between C-beta atoms
+    
+    Input:
+        dmap : distance map
+        
+    !!!
+        Not really correct, because not all atoms in the distance map are 
+        beta carbons; some are alpha (glycins). But they are a big minority.
+    !!!
+    """
     
     sr = 0
-    d = ((C_vdW ** 2 - dmap ** 2) ** 2) / C_vdW
-    for i in range(len(dmap) - 1):
-        for j in range(i + 1, len(dmap)):
-            if dmap[i, j] < C_vdW:
-                sr += d[i, j]
+    d = ((Cb_vdW ** 2 - dmap ** 2) ** 2) / Cb_vdW
+    
+    sr = 0.5 * torch.sum(d[dmap < Cb_vdW]) / dmap.shape[0] # 0.5 to take values
+    # only from one diagonal, and then division by the domain length.
+    # This is kind of arbitrary, but otherwise the loss function blow up and
+    # steric_repulsion term becomes the dominant one
+    
     return sr
 
 
@@ -33,14 +45,18 @@ def NLLLoss(structure,
             normal=True, 
             steric=False):
     """
-    Loss Function consisting of two potentials:
-        distance potential
-        torsion angle potential
+    Loss Function consisting of several potential terms:
+        distance potential     - main
+        steric repulsion       - optional
+        ramachandran potential - TODO
     
     distance potential is the log of a probability of a distance value
     from a distribution to which a cubic spline is fitted
     
-    angle potential 
+    Input:
+        structure : object of class "Structure"
+        normal    : bool, whether (scaled) normal distribution should be fitted to the distograms\n
+        steric    : bool, steric clashes potential term for loss function
     """
     
     x = torch.linspace(2, 22, 31)
@@ -49,7 +65,7 @@ def NLLLoss(structure,
         
     # DISTANCE POTENTIAL
     distance_map = structure.G()
-    if normal or normal == 'True' or normal == 'T':
+    if normal is True or normal == 'True' or normal == 'T':
         for i in range(len(distance_map) - 1):
             for j in range(i + 1, len(distance_map)):
                 mu, sigma, s = structure.normal_params[0, i, j],\
@@ -69,7 +85,7 @@ def NLLLoss(structure,
                                              min(torch.tensor(22), distance_map[i, j]))))
                 
     # Steric clashes term
-    if steric or steric == 'True' or steric == 'T':
+    if steric is True or steric == 'True' or steric == 'T':
         loss -= steric_repulsion(distance_map) 
     
     return -loss
@@ -130,7 +146,7 @@ def gd_psr(structure,
         if nesterov is True or nesterov == 'True' or nesterov == 'T':
             structure.torsion = (structure.torsion + momentum * V).detach().requires_grad_()
             
-        L = NLLLoss(structure, normal, steric=steric)
+        L = NLLLoss(structure, normal=normal, steric=steric)
         
         loss_minus_th_loss = L.item() - structure.min_theoretical_loss
         
@@ -140,17 +156,20 @@ def gd_psr(structure,
         
         L.backward()
         
-        #print(structure.torsion.grad[:5])
+        # GRADIENT NORMALIZATION
         if gradient_scaling == 'normal':
             # normalize gradients
             structure.torsion.grad = (structure.torsion.grad - torch.mean(structure.torsion.grad)) / torch.std(structure.torsion.grad)
+            
+            # gradients divided by their standard deviation
         elif gradient_scaling == 'sddiv':
             structure.torsion.grad = structure.torsion.grad / torch.std(structure.torsion.grad)
-        elif gradient_scaling == 'absmaxdiv':
+        
             # gradients inside range from -1 to 1
+        elif gradient_scaling == 'absmaxdiv':
             structure.torsion.grad = structure.torsion.grad / torch.max(torch.abs(structure.torsion.grad))
         
-        # Implementing momentum
+        # MOMENTUM
         V = momentum * V - lr * structure.torsion.grad
         
         structure.torsion = (structure.torsion + V).detach().requires_grad_()
@@ -173,11 +192,11 @@ def optimize(domain,
              seq_path,
              random_state=1,
              normal=True,
-             output_dir=None,
+             output_path=None,
              iterations=200, 
              distance_threshold=18,
              restarts=5,
-             lr=1e-3, 
+             lr=1e-2, 
              lr_decay=0.1,
              gradient_scaling='sddiv',
              momentum=0,
@@ -206,12 +225,14 @@ def optimize(domain,
         verbose            : how often should the program print info about losses. Default=iterations/20\n
         
     Output:
-        dictionary:
-            beststructure : structure with minimal loss\n
-            loss          : loss of the best structure\n
-            history       : history of learning
+        if output_path is None:
+            dictionary:
+                beststructure : structure with minimal loss\n
+                loss          : loss of the best structure\n
+                history       : history of learning
             
-        if output_dir is not None, the dictionary is pickled
+        else: 
+            coordinate file in pdb format saved in given output_path
     """
     
     history = []
@@ -241,10 +262,10 @@ def optimize(domain,
         history.extend(h)
     
     d = {'beststructure':structure, 'loss':l, 'history':np.array(history)}
-    if output_dir is not None:
+    if output_path is not None:
         
-        with open('{}/{}_{:d}_{:.3f}_{:.1f}_pred.pkl'.format(output_dir, domain, random_state, initial_lr, momentum), 'wb') as f:
-            pickle.dump(d, f)
+        structure.pdb_coords(output_path=output_path)
+
     else:
         return d
 
@@ -258,7 +279,7 @@ if __name__ == '__main__':
     
     parser.add_argument('-rs', '--randomstate', type=int, metavar='', required=False, help='Random Seed. Default = 1', default=1)
     parser.add_argument('-n', '--normal', metavar='', required=False, help='Fit normal distr to distograms. Default = True. If False, 3rd degree spline is fitted', default='True')
-    parser.add_argument('-o', '--outputdir', metavar='', required=False, help='Output Directory', default='./')
+    parser.add_argument('-o', '--outputpath', metavar='', required=False, help='Output Directory', default='./result.pdb')
     parser.add_argument('-i', '--iterations', type=int, metavar='', required=False, help='Number of iterations. Default = 200', default=200)
     parser.add_argument('-dt', '--distancethreshold', type=float, metavar='', required=False, help='only distances (real) less than "distance_threshold" are used for optimization. Default = 18A', default=18)
     parser.add_argument('-r', '--restarts', type=int, metavar='', required=False, help='Number of restarts of the Optimization process from the best previous state with decreased learning rate. Default = 5', default=5)
@@ -278,7 +299,7 @@ if __name__ == '__main__':
              seq_path=args.seq_path,
              random_state=args.randomstate,
              normal=args.normal,
-             output_dir=args.outputdir,
+             output_path=args.outputpath,
              iterations=args.iterations, 
              distance_threshold=args.distancethreshold,
              restarts=args.restarts,

@@ -265,19 +265,17 @@ class Structure(Geometry_tools):
         atom += '{:7.3f} {:7.3f} {:7.3f} {:6.3f} {:6.3f}           {}'.format(xyz[0], xyz[1], xyz[2], 1.0, 1.0, last_char)
         return atom
 
-    def pdb_coords(self, domain_start=0, output_dir=None, filename=None):
+    def pdb_coords(self, domain_start=0, output_path=None):
         """
         Coordinates in PDB format
         
         Input:
             self        : structure
             domain_start: index of domain start position
-            output_dir  : path to a directory where pdb file should be stored
+            output_path : path to a file where pdb file should be stored
         Output:
-            list of pdb_atom lists
+            pdb file either returned or saved in given path
         """
-        if filename is None:
-            filename = f'{self.domain}_pred.pdb'
         
         backbone, cbeta = self.G_full()
         seq = self.seq
@@ -308,12 +306,14 @@ class Structure(Geometry_tools):
 
             bind += 3
         
-        if output_dir is not None:
-            with open(f'{output_dir}/{filename}', 'w') as f:
+        if output_path is not None:
+            with open(f'{output_path}', 'w') as f:
                 f.write('HEADER ' + str(date.today()) + '\n')
                 f.write(f'TITLE Prediction of {self.domain}\n')
                 f.write(f'')
                 f.write('AUTHOR Tomas Sladecek\n')
+                f.write('REMARK https://github.com/tsladecek/GD_Protein_Structure_Optimization\n')
+                
                 for i in range(len(coords_full)):
                     f.write(coords_full[i] + '\n')
                     
