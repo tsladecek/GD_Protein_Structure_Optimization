@@ -8,8 +8,8 @@ import numpy as np
 CNCA = torch.tensor(np.radians(122))
 NCAC = torch.tensor(np.radians(111))
 CACN = torch.tensor(np.radians(116))
-CCACB = torch.tensor(np.radians(150)) # this is the angle between the plane
-    # where backbone atoms are and vector CACB (counter-closkwise)
+CCACB = torch.tensor(np.radians(150))  # this is the angle between the plane
+# where backbone atoms are and vector CACB (counter-closkwise)
 
 # distances
 CAC = 1.52
@@ -17,10 +17,9 @@ CN = 1.33
 NCA = 1.45
 CACB = 1.52
 
+
 class Geometry_tools:
-    #def __init__(self):
-    #    return
-    
+
     def cross_product(self, k, v):
         # definition of cross product
         cp = torch.tensor([
@@ -29,20 +28,20 @@ class Geometry_tools:
             k[0] * v[1] - k[1] * v[0]
         ])
         return cp
-    
+
     def calc_v(self, coords, atom):
         """
         Calculate vector in the plane of previous 3 atoms in the direction
         of the target atom
-        
+
         Input:
             coords: a 2D torch tensor of shape (L, 3)
             atom  : a string ('C', 'N' or 'CA')
-        
+
         Output:
-            vector "v": 1D torch tensor 
+            vector "v": 1D torch tensor
         """
-        
+
         if atom == 'N':
             v_size = CN
             angle = CACN + NCAC - np.pi
@@ -63,19 +62,19 @@ class Geometry_tools:
         n = n / torch.sqrt(torch.sum(n ** 2))
 
         return v_size * self.rodrigues(v0, n, angle)
-    
+
     def rodrigues(self, v, k, angle):
         """
         Rotate vector "v" by a angle around basis vector "k"
         see: https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
-        
+
         My Implementation - commented is official rodrigues formula
-        
+
         Input:
             v    : a 1D torch tensor
             k    : a 1D unit torch tensor
             angle: an angle in radians as a torch tensor
-        
+
         Output:
             rotated vector: 1D torch tensor
         """
@@ -90,30 +89,28 @@ class Geometry_tools:
         kv = torch.sum(k * v)
         mv = torch.sum(m * v)
 
-        v_s = torch.sqrt(torch.sum(v ** 2))
-
         k_axis = k * kv
         n_axis = n * torch.sin(angle) * mv
         m_axis = m * torch.cos(angle) * mv
 
         vrot = k_axis + n_axis + m_axis
-        
+
         return vrot
 
     def calc_atom_coords(self, coords, atom, angle):
         """
-        Calculate coordinates of a new atom given list of coordinates of at least 
+        Calculate coordinates of a new atom given list of coordinates of at least
         previous three atoms
-        
+
         Input:
             coords: a 2D torch tensor of shape (L, 3)
             atom  : a string ('C', 'N' or 'CA')
             angle: an angle in radians as a torch tensor
-        
+
         Output:
             rotated and translated vector: 1D torch tensor
         """
-        
+
         k = coords[-1] - coords[-2]
         k = k / torch.sqrt(torch.sum(k ** 2))  # unit vector
 
@@ -121,14 +118,14 @@ class Geometry_tools:
 
         rotated = self.rodrigues(v, k, angle)
         return rotated + coords[-1]
-    
+
     def place_cbeta(self, residue):
         """
-        Calculate coordinates of C-beta atom. 
-        
+        Calculate coordinates of C-beta atom.
+
         Input:
             residue: a 2D torch tensor of coordinates in the order N, CA, C
-        
+
         Output
             coordinates of the C-beta atom: 1D torch tensor
         """
@@ -145,4 +142,3 @@ class Geometry_tools:
         k = k / torch.sqrt(torch.sum(k ** 2))
 
         return self.rodrigues(k, n, CCACB) * CACB + residue[1]
-    
